@@ -2,8 +2,8 @@
  * \file main.cpp
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
- * \date 2025-02-12
- * \version 1.0
+ * \date 2025-02-17
+ * \version 1.1
  */
 
 #include <iostream>
@@ -14,6 +14,8 @@
 #include <spdlog/fmt/ranges.h>
 #include "config_parser.hpp"
 #include "file_finder.hpp"
+#include "csv_record.hpp"
+#include "csv_reader.hpp"
 
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
@@ -139,7 +141,21 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     
-    // TODO: Реализовать обработку файлов
+    // Чтение всех CSV файлов
+    std::vector<csv_record> all_records;
+    
+    for (const auto& file_path : csv_files) {
+        auto records = csv_reader::read_file(file_path);
+        all_records.insert(all_records.end(), 
+            records.begin(), records.end());
+    }
+    
+    if (all_records.empty()) {
+        spdlog::error("Не удалось прочитать ни одной записи");
+        return 1;
+    }
+    
+    spdlog::info("Всего прочитано записей: {}", all_records.size());
     
     spdlog::info("Завершение работы");
     return 0;
