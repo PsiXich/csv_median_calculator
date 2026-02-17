@@ -156,6 +156,15 @@ int main(int argc, char* argv[]) {
     }
     
     spdlog::info("Всего прочитано записей: {}", all_records.size());
+
+    // Сортировка по receive_ts
+    spdlog::info("Сортировка данных по временной метке...");
+    std::sort(all_records.begin(), all_records.end(),
+        [](const csv_record& a_, const csv_record& b_) {
+            return get_receive_ts(a_) < get_receive_ts(b_);
+        });
+    
+    spdlog::info("Сортировка завершена");
     
     spdlog::info("Завершение работы");
     return 0;
