@@ -2,7 +2,7 @@
  * \file main.cpp
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
- * \date 2025-02-17
+ * \date 2025-02-18
  * \version 1.1
  */
 
@@ -16,6 +16,7 @@
 #include "file_finder.hpp"
 #include "csv_record.hpp"
 #include "csv_reader.hpp"
+#include "median_calculator.hpp"
 
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
@@ -165,6 +166,22 @@ int main(int argc, char* argv[]) {
         });
     
     spdlog::info("Сортировка завершена");
+
+    // Расчет медианы
+    spdlog::info("Начинаю расчет медианы...");
+    auto median_results = median_calculator::calculate(all_records);
+    
+    if (median_results.empty()) {
+        spdlog::error("Не удалось рассчитать медиану");
+        return 1;
+    }
+    
+    // Сохранение результатов
+    const auto output_file = config.output_dir / "median_result.csv";
+    if (!median_calculator::save_results(median_results, output_file)) {
+        spdlog::error("Не удалось сохранить результаты");
+        return 1;
+    }
     
     spdlog::info("Завершение работы");
     return 0;
