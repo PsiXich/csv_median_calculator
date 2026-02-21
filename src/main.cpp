@@ -2,8 +2,8 @@
  * \file main.cpp
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
- * \date 2025-02-18
- * \version 1.1
+ * \date 2025-02-21
+ * \version 1.3
  */
 
 #include <iostream>
@@ -25,17 +25,17 @@ namespace fs = std::filesystem;
  * \brief Парсинг аргументов командной строки
  * \param argc_ количество аргументов
  * \param argv_ массив аргументов
- * \return путь к конфигурационному файлу(пустой при ошибке)
+ * \return путь к конфигурационному файлу (пустой при ошибке)
  */
 [[nodiscard]] fs::path parse_command_line(int argc_, char* argv_[]) noexcept {
     try {
-        po::options_description desc("Допустимые опции");
+        po::options_description desc("Available options");
         desc.add_options()
-            ("help,h", "Показать справку")
+            ("help,h", "Show help message")
             ("config,c", po::value<std::string>(), 
-                "Путь к конфигурационному файлу")
+                "Path to configuration file")
             ("cfg", po::value<std::string>(), 
-                "Путь к конфигурационному файлу (короткая форма)");
+                "Path to configuration file (short form)");
         
         po::variables_map vm;
         po::store(po::parse_command_line(argc_, argv_, desc), vm);
@@ -55,18 +55,51 @@ namespace fs = std::filesystem;
         } else if (vm.count("cfg")) {
             config_path = vm["cfg"].as<std::string>();
         } else {
-            // По умолчанию ищем config.toml в директории с исполняемым файлом
+            // По умолчанию ищем config.toml в текущей директории
             config_path = fs::current_path() / "config.toml";
-            spdlog::info("Конфигурационный файл не указан, используется: {}", 
+            spdlog::info("Config file not specified, using: {}", 
                 config_path.string());
         }
         
         return config_path;
         
     } catch (const std::exception& err) {
-        spdlog::error("Ошибка парсинга аргументов командной строки: {}", 
+        spdlog::error("Error parsing command line arguments: {}", 
             err.what());
         return "";
+    }
+}
+
+/**
+ * \brief Проверка существования директории и создание при необходимости
+ * \param path_ путь к директории
+ * \param description_ описание для логов
+ * \return true если директория существует или успешно создана
+ */
+[[nodiscard]] bool ensure_directory_exists(
+    const fs::path& path_,
+    const std::string& description_) noexcept {
+    
+    try {
+        if (fs::exists(path_)) {
+            if (!fs::is_directory(path_)) {
+                spdlog::error("{} exists but is not a directory: {}", 
+                    description_, path_.string());
+                return false;
+            }
+            return true;
+        }
+        
+        // Директория не существует, создаём её
+        fs::create_directories(path_);
+        spdlog::info("Created {} directory: {}", 
+            description_, path_.string());
+        return true;
+        
+    } catch (const fs::filesystem_error& err) {
+        spdlog::error("Failed to create {} directory: {}", 
+            description_, err.what());
+        return false;
     }
 }
 
@@ -74,7 +107,7 @@ int main(int argc, char* argv[]) {
     // Настройка логирования
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     
-    spdlog::info("Запуск приложения csv_median_calculator v1.0.0");
+    spdlog::info("Starting csv_median_calculator v1.0.0");
     
     // Парсинг аргументов командной строки
     auto config_path = parse_command_line(argc, argv);
@@ -82,53 +115,39 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    spdlog::info("Чтение конфигурации: {}", config_path.string());
+    spdlog::info("Reading configuration: {}", config_path.string());
     
     // Парсинг конфигурационного файла
     auto config_opt = config_parser::parse(config_path);
     if (!config_opt) {
-        spdlog::error("Не удалось загрузить конфигурацию");
+        spdlog::error("Failed to load configuration");
         return 1;
     }
     
     const auto& config = *config_opt;
     
     // Вывод конфигурации
-    spdlog::info("Входная директория: {}", config.input_dir.string());
-    spdlog::info("Выходная директория: {}", config.output_dir.string());
+    spdlog::info("Input directory: {}", config.input_dir.string());
+    spdlog::info("Output directory: {}", config.output_dir.string());
     
-    //В spdlog есть поддержка fmt
+    // В spdlog есть встроенная поддержка fmt
     if (!config.filename_mask.empty()) {
-        spdlog::info("Маски файлов: {}", 
+        spdlog::info("File masks: {}", 
             fmt::join(config.filename_mask, ", "));
     } else {
-        spdlog::info("Маски файлов не указаны, будут обработаны все CSV файлы");
+        spdlog::info("No file masks specified, all CSV files will be processed");
     }
     
-    // Валидация директорий
-    if (!fs::exists(config.input_dir)) {
-        spdlog::error("Входная директория не существует: {}", 
-            config.input_dir.string());
+    // Проверка и создание входной директории при необходимости
+    if (!ensure_directory_exists(config.input_dir, "input")) {
+        spdlog::error("Cannot proceed without input directory");
         return 1;
     }
     
-    if (!fs::is_directory(config.input_dir)) {
-        spdlog::error("Путь не является директорией: {}", 
-            config.input_dir.string());
+    // Проверка и создание выходной директории при необходимости
+    if (!ensure_directory_exists(config.output_dir, "output")) {
+        spdlog::error("Cannot create output directory");
         return 1;
-    }
-    
-    // Создание выходной директории если не существует
-    if (!fs::exists(config.output_dir)) {
-        try {
-            fs::create_directories(config.output_dir);
-            spdlog::info("Создана выходная директория: {}", 
-                config.output_dir.string());
-        } catch (const fs::filesystem_error& err) {
-            spdlog::error("Не удалось создать выходную директорию: {}", 
-                err.what());
-            return 1;
-        }
     }
     
     // Поиск CSV файлов
@@ -137,8 +156,11 @@ int main(int argc, char* argv[]) {
         config.filename_mask);
     
     if (csv_files.empty()) {
-        spdlog::warn("CSV файлы не найдены в директории: {}", 
+        spdlog::warn("No CSV files found in directory: {}", 
             config.input_dir.string());
+        spdlog::info("Please add CSV files to: {}", 
+            config.input_dir.string());
+        spdlog::info("You can generate test data using: generate_test_data.exe");
         return 0;
     }
     
@@ -152,37 +174,37 @@ int main(int argc, char* argv[]) {
     }
     
     if (all_records.empty()) {
-        spdlog::error("Не удалось прочитать ни одной записи");
+        spdlog::error("Failed to read any records");
         return 1;
     }
     
-    spdlog::info("Всего прочитано записей: {}", all_records.size());
+    spdlog::info("Total records read: {}", all_records.size());
 
     // Сортировка по receive_ts
-    spdlog::info("Сортировка данных по временной метке...");
+    spdlog::info("Sorting data by timestamp...");
     std::sort(all_records.begin(), all_records.end(),
         [](const csv_record& a_, const csv_record& b_) {
             return get_receive_ts(a_) < get_receive_ts(b_);
         });
     
-    spdlog::info("Сортировка завершена");
+    spdlog::info("Sorting completed");
 
     // Расчет медианы
-    spdlog::info("Начинаю расчет медианы...");
+    spdlog::info("Starting median calculation...");
     auto median_results = median_calculator::calculate(all_records);
     
     if (median_results.empty()) {
-        spdlog::error("Не удалось рассчитать медиану");
+        spdlog::error("Failed to calculate median");
         return 1;
     }
     
     // Сохранение результатов
     const auto output_file = config.output_dir / "median_result.csv";
     if (!median_calculator::save_results(median_results, output_file)) {
-        spdlog::error("Не удалось сохранить результаты");
+        spdlog::error("Failed to save results");
         return 1;
     }
     
-    spdlog::info("Завершение работы");
+    spdlog::info("Application finished successfully");
     return 0;
 }
