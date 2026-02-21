@@ -2,8 +2,8 @@
  * \file median_calculator.hpp
  * \author github:PsiXich
  * \brief Расчет медианы с использованием Boost.Accumulators
- * \date 2025-02-17
- * \version 1.1
+ * \date 2025-02-21
+ * \version 1.3
  */
 
 #ifndef MEDIAN_CALCULATOR_HPP
@@ -67,6 +67,9 @@ private:
         double,
         acc::stats<acc::tag::median(acc::with_p_square_quantile)>
     >;
+    
+    /// Минимальное количество значений для корректной работы P² алгоритма
+    static constexpr std::size_t MIN_VALUES_FOR_P2 = 5;
 };
 
 // ============================================================================
@@ -80,33 +83,61 @@ std::vector<median_result> median_calculator::calculate(
     
     try {
         if (records_.empty()) {
-            spdlog::warn("Нет данных для расчета медианы");
+            spdlog::warn("No data for median calculation");
             return results;
         }
         
         accumulator_t acc;
         std::optional<double> previous_median;
+        std::vector<double> initial_values;  // Для первых значений
         
-        for (const auto& record : records_) {
-            // Добавление цены в аккумулятор
+        for (std::size_t i = 0; i < records_.size(); ++i) {
+            const auto& record = records_[i];
             const double price = get_price(record);
+            const auto receive_ts = get_receive_ts(record);
+            
+            // Добавление цены в аккумулятор
             acc(price);
             
-            // Вычисление текущей медианы
-            const double current_median = acc::median(acc);
-            
-            // Запись результата только при изменении медианы
-            if (!previous_median || *previous_median != current_median) {
-                const auto receive_ts = get_receive_ts(record);
-                results.emplace_back(receive_ts, current_median);
-                previous_median = current_median;
+            // Для первых MIN_VALUES_FOR_P2 значений храним в векторе
+            if (i < MIN_VALUES_FOR_P2) {
+                initial_values.push_back(price);
+                
+                // Вычисляем медиану вручную для первых значений
+                std::vector<double> sorted_values = initial_values;
+                std::sort(sorted_values.begin(), sorted_values.end());
+                
+                double current_median;
+                std::size_t n = sorted_values.size();
+                if (n % 2 == 0) {
+                    // Чётное количество - среднее двух центральных
+                    current_median = (sorted_values[n/2 - 1] + sorted_values[n/2]) / 2.0;
+                } else {
+                    // Нечётное - центральный элемент
+                    current_median = sorted_values[n/2];
+                }
+                
+                // Запись результата только при изменении медианы
+                if (!previous_median || *previous_median != current_median) {
+                    results.emplace_back(receive_ts, current_median);
+                    previous_median = current_median;
+                }
+            } else {
+                // После MIN_VALUES_FOR_P2 используем P² алгоритм
+                const double current_median = acc::median(acc);
+                
+                // Запись результата только при изменении медианы
+                if (!previous_median || *previous_median != current_median) {
+                    results.emplace_back(receive_ts, current_median);
+                    previous_median = current_median;
+                }
             }
         }
         
-        spdlog::info("Записано изменений медианы: {}", results.size());
+        spdlog::info("Recorded median changes: {}", results.size());
         
     } catch (const std::exception& err) {
-        spdlog::error("Ошибка при расчете медианы: {}", err.what());
+        spdlog::error("Error calculating median: {}", err.what());
     }
     
     return results;
@@ -125,7 +156,7 @@ bool median_calculator::save_results(
         
         std::ofstream file(output_path_);
         if (!file.is_open()) {
-            spdlog::error("Не удалось создать выходной файл: {}", 
+            spdlog::error("Failed to create output file: {}", 
                 output_path_.string());
             return false;
         }
@@ -145,16 +176,16 @@ bool median_calculator::save_results(
         file.close();
         
         if (!file.good()) {
-            spdlog::error("Ошибка записи в файл: {}", 
+            spdlog::error("Error writing to file: {}", 
                 output_path_.string());
             return false;
         }
         
-        spdlog::info("Результат сохранен: {}", output_path_.string());
+        spdlog::info("Results saved: {}", output_path_.string());
         return true;
         
     } catch (const std::exception& err) {
-        spdlog::error("Ошибка сохранения результатов: {}", err.what());
+        spdlog::error("Error saving results: {}", err.what());
         return false;
     }
 }
