@@ -13,6 +13,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Опция для строгих проверок
 option(ENABLE_STRICT_WARNINGS "Enable strict compiler warnings" ON)
 
+# Статическая линковка для MinGW (Windows)
+if(MINGW)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static")
+    message(STATUS "MinGW detected: enabling static linking")
+endif()
+
 # FetchContent
 include(FetchContent)
 
@@ -79,7 +85,15 @@ if(ENABLE_STRICT_WARNINGS)
     endif()
 endif()
 
-# Строгие флаги компиляции только для нашего кода
+# ============================================================================
+# Генератор тестовых данных
+# ============================================================================
+
+add_executable(generate_test_data
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generate_test_data.cpp
+)
+
+# Строгие флаги для генератора
 if(ENABLE_STRICT_WARNINGS)
     if(MSVC)
         target_compile_options(generate_test_data PRIVATE /W4)
@@ -102,7 +116,7 @@ configure_file(
 # Установка
 # ============================================================================
 
-install(TARGETS csv_median_calculator
+install(TARGETS csv_median_calculator generate_test_data
     RUNTIME DESTINATION bin
 )
 
