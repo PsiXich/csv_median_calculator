@@ -2,8 +2,8 @@
  * \file main.cpp
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
- * \date 2025-02-21
- * \version 1.3
+ * \date 2025-02-22
+ * \version 2.0
  */
 
 #include <iostream>
@@ -17,6 +17,9 @@
 #include "csv_record.hpp"
 #include "csv_reader.hpp"
 #include "median_calculator.hpp"
+#include "thread_safe_queue.hpp"
+#include "parallel_csv_reader.hpp"
+#include "data_processor.hpp"
 
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
@@ -35,7 +38,9 @@ namespace fs = std::filesystem;
             ("config,c", po::value<std::string>(), 
                 "Path to configuration file")
             ("cfg", po::value<std::string>(), 
-                "Path to configuration file (short form)");
+                "Path to configuration file (short form)")
+            ("single-thread,s", "Use single-threaded mode (v1.0)")
+            ("benchmark,b", "Run benchmark (compare single vs multi)");
         
         po::variables_map vm;
         po::store(po::parse_command_line(argc_, argv_, desc), vm);
@@ -44,6 +49,10 @@ namespace fs = std::filesystem;
         // Обработка справки
         if (vm.count("help")) {
             std::cout << desc << "\n";
+            std::cout << "\nExamples:\n";
+            std::cout << "  Multi-threaded:  ./csv_median_calculator -config config.toml\n";
+            std::cout << "  Single-threaded: ./csv_median_calculator -s\n";
+            std::cout << "  Benchmark:       ./csv_median_calculator -b\n";
             return "";
         }
         
@@ -101,6 +110,94 @@ namespace fs = std::filesystem;
             description_, err.what());
         return false;
     }
+}
+
+/**
+ * \brief Однопоточная обработка (v1.0 алгоритм)
+ * \param csv_files список файлов
+ * \return вектор результатов
+ */
+[[nodiscard]] std::vector<median_result> process_single_threaded(
+    const std::vector<fs::path>& csv_files) {
+    
+    spdlog::info("Using SINGLE-THREADED mode (v1.0)");
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Чтение всех CSV файлов последовательно
+    std::vector<csv_record> all_records;
+    
+    for (const auto& file_path : csv_files) {
+        auto records = csv_reader::read_file(file_path);
+        all_records.insert(all_records.end(), 
+            records.begin(), records.end());
+    }
+    
+    if (all_records.empty()) {
+        spdlog::error("Failed to read any records");
+        return {};
+    }
+    
+    spdlog::info("Total records read: {}", all_records.size());
+
+    // Сортировка по receive_ts
+    spdlog::info("Sorting data by timestamp...");
+    std::sort(all_records.begin(), all_records.end(),
+        [](const csv_record& a_, const csv_record& b_) {
+            return get_receive_ts(a_) < get_receive_ts(b_);
+        });
+    
+    spdlog::info("Sorting completed");
+
+    // Расчет медианы
+    spdlog::info("Starting median calculation...");
+    auto median_results = median_calculator::calculate(all_records);
+    
+    auto end_time = std::chrono::steady_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    
+    spdlog::info("Single-threaded processing completed in {} ms", 
+        total_time.count());
+    
+    return median_results;
+}
+
+/**
+ * \brief Многопоточная обработка (v2.0 алгоритм)
+ * \param csv_files список файлов
+ * \return вектор результатов
+ */
+[[nodiscard]] std::vector<median_result> process_multi_threaded(
+    const std::vector<fs::path>& csv_files) {
+    
+    spdlog::info("Using MULTI-THREADED mode (v2.0)");
+    spdlog::info("Hardware threads available: {}", 
+        std::thread::hardware_concurrency());
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Создаём потокобезопасную очередь
+    auto queue = std::make_shared<thread_safe_queue<csv_record>>();
+    
+    // Создаём параллельный читатель
+    parallel_csv_reader reader(queue);
+    
+    // Запускаем чтение в отдельных потоках
+    auto read_stats = reader.read_files(csv_files);
+    
+    // Обрабатываем данные из очереди
+    data_processor processor(queue);
+    auto median_results = processor.process_and_calculate();
+    
+    auto end_time = std::chrono::steady_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    
+    spdlog::info("Multi-threaded processing completed in {} ms", 
+        total_time.count());
+    
+    return median_results;
 }
 
 int main(int argc, char* argv[]) {
