@@ -81,7 +81,7 @@ public:
         std::vector<std::thread> threads;
         threads.reserve(files_.size());
         
-        // Вектор для статистики (индексированный)
+        // Вектор для статистики индексированный
         std::vector<read_stats> stats(files_.size());
         
         // Запуск потока для каждого файла
