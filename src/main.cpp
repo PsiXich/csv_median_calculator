@@ -2,13 +2,17 @@
  * \file main.cpp
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
- * \date 2025-02-22
+ * \date 2025-02-23
  * \version 2.0
  */
 
 #include <iostream>
 #include <filesystem>
 #include <string>
+#include <vector>
+#include <algorithm>
+#include <memory>
+#include <chrono>
 #include <boost/program_options.hpp>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ranges.h>
@@ -200,12 +204,85 @@ namespace fs = std::filesystem;
     return median_results;
 }
 
+/**
+ * \brief Запуск benchmark сравнения однопоточной и многопоточной версий
+ * \param csv_files список файлов
+ * \param output_dir директория для результатов
+ */
+void run_benchmark(
+    const std::vector<fs::path>& csv_files,
+    const fs::path& output_dir) {
+    
+    spdlog::info("========================================");
+    spdlog::info("  BENCHMARK: Single-thread vs Multi-thread");
+    spdlog::info("========================================");
+    spdlog::info("Files: {}", csv_files.size());
+    spdlog::info("");
+    
+    // Однопоточная версия
+    spdlog::info("--- Running Single-threaded version ---");
+    auto st_start = std::chrono::steady_clock::now();
+    auto st_results = process_single_threaded(csv_files);
+    auto st_end = std::chrono::steady_clock::now();
+    auto st_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        st_end - st_start);
+    
+    spdlog::info("");
+    
+    // Многопоточная версия
+    spdlog::info("--- Running Multi-threaded version ---");
+    auto mt_start = std::chrono::steady_clock::now();
+    auto mt_results = process_multi_threaded(csv_files);
+    auto mt_end = std::chrono::steady_clock::now();
+    auto mt_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        mt_end - mt_start);
+    
+    spdlog::info("");
+    spdlog::info("========================================");
+    spdlog::info("  BENCHMARK RESULTS");
+    spdlog::info("========================================");
+    spdlog::info("Single-threaded: {} ms", st_time.count());
+    spdlog::info("Multi-threaded:  {} ms", mt_time.count());
+    
+    if (mt_time.count() > 0) {
+        double speedup = static_cast<double>(st_time.count()) / mt_time.count();
+        spdlog::info("Speedup:         {:.2f}x", speedup);
+        
+        if (speedup > 1.0) {
+            spdlog::info("Multi-threaded is {:.1f}% FASTER", (speedup - 1.0) * 100);
+        } else {
+            spdlog::info("Single-threaded is {:.1f}% faster", (1.0 / speedup - 1.0) * 100);
+        }
+    }
+    spdlog::info("========================================");
+    
+    // Сохраняем результаты многопоточной версии
+    const auto output_file = output_dir / "median_result.csv";
+    if (!median_calculator::save_results(mt_results, output_file)) {
+    spdlog::error("Failed to save benchmark results");
+}
+}
+
 int main(int argc, char* argv[]) {
     // Настройка логирования
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     
     spdlog::info("Starting csv_median_calculator v1.0.0");
     
+    // Проверка аргументов для выбора режима
+    bool single_thread_mode = false;
+    bool benchmark_mode = false;
+    
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-s" || arg == "--single-thread") {
+            single_thread_mode = true;
+        }
+        if (arg == "-b" || arg == "--benchmark") {
+            benchmark_mode = true;
+        }
+    }
+
     // Парсинг аргументов командной строки
     auto config_path = parse_command_line(argc, argv);
     if (config_path.empty()) {
@@ -261,45 +338,44 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     
-    // Чтение всех CSV файлов
-    std::vector<csv_record> all_records;
+    // Выбор режима обработки
+    std::vector<median_result> median_results;
     
-    for (const auto& file_path : csv_files) {
-        auto records = csv_reader::read_file(file_path);
-        all_records.insert(all_records.end(), 
-            records.begin(), records.end());
-    }
-    
-    if (all_records.empty()) {
-        spdlog::error("Failed to read any records");
-        return 1;
-    }
-    
-    spdlog::info("Total records read: {}", all_records.size());
-
-    // Сортировка по receive_ts
-    spdlog::info("Sorting data by timestamp...");
-    std::sort(all_records.begin(), all_records.end(),
-        [](const csv_record& a_, const csv_record& b_) {
-            return get_receive_ts(a_) < get_receive_ts(b_);
-        });
-    
-    spdlog::info("Sorting completed");
-
-    // Расчет медианы
-    spdlog::info("Starting median calculation...");
-    auto median_results = median_calculator::calculate(all_records);
-    
-    if (median_results.empty()) {
-        spdlog::error("Failed to calculate median");
-        return 1;
-    }
-    
-    // Сохранение результатов
-    const auto output_file = config.output_dir / "median_result.csv";
-    if (!median_calculator::save_results(median_results, output_file)) {
-        spdlog::error("Failed to save results");
-        return 1;
+    if (benchmark_mode) {
+        // Режим бенчмарка
+        run_benchmark(csv_files, config.output_dir);
+        
+    } else if (single_thread_mode) {
+        // Однопоточный режим
+        median_results = process_single_threaded(csv_files);
+        
+        if (median_results.empty()) {
+            spdlog::error("Failed to calculate median");
+            return 1;
+        }
+        
+        // Сохранение результатов
+        const auto output_file = config.output_dir / "median_result.csv";
+        if (!median_calculator::save_results(median_results, output_file)) {
+            spdlog::error("Failed to save results");
+            return 1;
+        }
+        
+    } else {
+        // Многопоточный режим (по умолчанию)
+        median_results = process_multi_threaded(csv_files);
+        
+        if (median_results.empty()) {
+            spdlog::error("Failed to calculate median");
+            return 1;
+        }
+        
+        // Сохранение результатов
+        const auto output_file = config.output_dir / "median_result.csv";
+        if (!median_calculator::save_results(median_results, output_file)) {
+            spdlog::error("Failed to save results");
+            return 1;
+        }
     }
     
     spdlog::info("Application finished successfully");
