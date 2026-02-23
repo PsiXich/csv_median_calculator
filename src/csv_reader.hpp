@@ -112,7 +112,7 @@ std::vector<csv_record> csv_reader::read_file(
     try {
         std::ifstream file(file_path_);
         if (!file.is_open()) {
-            spdlog::error("Не удалось открыть файл: {}", 
+            spdlog::error("Unable to open file: {}", 
                 file_path_.string());
             return result;
         }
@@ -122,14 +122,14 @@ std::vector<csv_record> csv_reader::read_file(
         
         // Чтение заголовка
         if (!std::getline(file, line)) {
-            spdlog::error("Файл пуст: {}", file_path_.string());
+            spdlog::error("The file is empty: {}", file_path_.string());
             return result;
         }
         line_number++;
         
         auto header_fields = split_line(line);
         if (header_fields.empty()) {
-            spdlog::error("Некорректный заголовок в файле: {}", 
+            spdlog::error("Incorrect header in file: {}", 
                 file_path_.string());
             return result;
         }
@@ -153,7 +153,7 @@ std::vector<csv_record> csv_reader::read_file(
                 if (record) {
                     result.push_back(*record);
                 } else {
-                    spdlog::warn("Ошибка парсинга строки {} в файле {}", 
+                    spdlog::warn("String parsing error {} in the file {}", 
                         line_number, file_path_.filename().string());
                 }
             } else {
@@ -161,17 +161,17 @@ std::vector<csv_record> csv_reader::read_file(
                 if (record) {
                     result.push_back(*record);
                 } else {
-                    spdlog::warn("Ошибка парсинга строки {} в файле {}", 
+                    spdlog::warn("String parsing error {} in the file {}", 
                         line_number, file_path_.filename().string());
                 }
             }
         }
         
-        spdlog::info("Прочитано {} записей из файла {}", 
+        spdlog::info("Read {} records from the file {}", 
             result.size(), file_path_.filename().string());
         
     } catch (const std::exception& err) {
-        spdlog::error("Ошибка чтения файла {}: {}", 
+        spdlog::error("File read error {}: {}", 
             file_path_.string(), err.what());
     }
     

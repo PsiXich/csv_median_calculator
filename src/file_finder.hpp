@@ -75,13 +75,13 @@ std::vector<fs::path> file_finder::find_csv_files(
     
     try {
         if (!fs::exists(directory_)) {
-            spdlog::error("Директория не существует: {}", 
+            spdlog::error("The directory does not exist: {}", 
                 directory_.string());
             return result;
         }
         
         if (!fs::is_directory(directory_)) {
-            spdlog::error("Путь не является директорией: {}", 
+            spdlog::error("The path is not a directory: {}", 
                 directory_.string());
             return result;
         }
@@ -111,15 +111,15 @@ std::vector<fs::path> file_finder::find_csv_files(
         // Сортировка по имени файла для детерминированного порядка
         std::sort(result.begin(), result.end());
         
-        spdlog::info("Найдено файлов: {}", result.size());
+        spdlog::info("Files found: {}", result.size());
         for (const auto& file : result) {
             spdlog::info("  - {}", file.filename().string());
         }
         
     } catch (const fs::filesystem_error& err) {
-        spdlog::error("Ошибка при сканировании директории: {}", err.what());
+        spdlog::error("Error scanning directory: {}", err.what());
     } catch (const std::exception& err) {
-        spdlog::error("Неожиданная ошибка при поиске файлов: {}", err.what());
+        spdlog::error("Unexpected error when searching for files: {}", err.what());
     }
     
     return result;

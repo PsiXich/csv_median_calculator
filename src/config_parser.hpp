@@ -80,7 +80,7 @@ std::optional<app_config> config_parser::parse(
     try {
         // Проверка существования файла
         if (!fs::exists(config_path_)) {
-            spdlog::error("Файл конфигурации не найден: {}", 
+            spdlog::error("Configuration file not found: {}", 
                 config_path_.string());
             return std::nullopt;
         }
@@ -91,7 +91,7 @@ std::optional<app_config> config_parser::parse(
         // Получение секции [main]
         auto main_section = config["main"];
         if (!main_section) {
-            spdlog::error("Секция [main] не найдена в конфигурации");
+            spdlog::error("Section [main] not found in configuration");
             return std::nullopt;
         }
         
@@ -103,7 +103,7 @@ std::optional<app_config> config_parser::parse(
         // input (обязательный параметр)
         auto input_opt = extract_path(main_table, "input");
         if (!input_opt) {
-            spdlog::error("Параметр 'input' обязателен в конфигурации");
+            spdlog::error("The ‘input’ parameter is mandatory in the configuration");
             return std::nullopt;
         }
         result.input_dir = *input_opt;
@@ -115,7 +115,7 @@ std::optional<app_config> config_parser::parse(
         } else {
             // По умолчанию создаем директорию output в текущей директории
             result.output_dir = fs::current_path() / "output";
-            spdlog::info("Параметр 'output' не указан, используется: {}", 
+            spdlog::info("The ‘output’ parameter is not specified, used: {}", 
                 result.output_dir.string());
         }
         
@@ -123,17 +123,17 @@ std::optional<app_config> config_parser::parse(
         result.filename_mask = extract_string_array(main_table, "filename_mask");
         
         if (!result.is_valid()) {
-            spdlog::error("Конфигурация некорректна");
+            spdlog::error("The configuration is incorrect");
             return std::nullopt;
         }
         
         return result;
         
     } catch (const toml::parse_error& err) {
-        spdlog::error("Ошибка парсинга TOML: {}", err.what());
+        spdlog::error("Parsing error TOML: {}", err.what());
         return std::nullopt;
     } catch (const std::exception& err) {
-        spdlog::error("Неожиданная ошибка при парсинге конфигурации: {}", 
+        spdlog::error("Unexpected error while parsing configuration: {}", 
             err.what());
         return std::nullopt;
     }
