@@ -2,8 +2,8 @@
  * \file file_finder.hpp
  * \author github:PsiXich
  * \brief Поиск и фильтрация CSV файлов в директории
- * \date 2025-02-12
- * \version 1.0
+ * \date 2025-02-23
+ * \version 2.0
  */
 
 #ifndef FILE_FINDER_HPP

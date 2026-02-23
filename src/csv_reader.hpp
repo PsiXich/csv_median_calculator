@@ -2,8 +2,8 @@
  * \file csv_reader.hpp
  * \author github:PsiXich
  * \brief Парсер CSV файлов с биржевыми данными
- * \date 2025-02-13
- * \version 1.1
+ * \date 2025-02-23
+ * \version 2.0
  */
 
 #ifndef CSV_READER_HPP

@@ -2,8 +2,8 @@
  * \file config_parser.hpp
  * \author github:PsiXich
  * \brief Парсер конфигурационного файла TOML
- * \date 2025-02-12
- * \version 1.0
+ * \date 2025-02-23
+ * \version 2.0
  */
 
 #ifndef CONFIG_PARSER_HPP
