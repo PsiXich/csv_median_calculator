@@ -214,6 +214,43 @@ namespace fs = std::filesystem;
 }
 
 /**
+ * \brief Потоковая обработка (v2.1)
+ * \param csv_files список файлов
+ * \return вектор результатов
+ */
+[[nodiscard]] std::vector<median_result> process_streaming(
+    const std::vector<fs::path>& csv_files,
+    int batch_size = 10000) {
+    
+    spdlog::info("Using STREAMING mode (v2.1) - Memory Efficient");
+    spdlog::info("Batch size: {} records", batch_size);
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    auto queue = std::make_shared<thread_safe_queue<csv_record>>();
+    
+    streaming_config config;
+    config.batch_size = batch_size;
+    config.max_memory_mb = 512;  // 512 MB limit
+    
+    streaming_parallel_reader reader(queue, config);
+    
+    auto stream_stats = reader.read_files_streaming(csv_files);
+    
+    data_processor processor(queue);
+    auto median_results = processor.process_and_calculate();
+    
+    auto end_time = std::chrono::steady_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    
+    spdlog::info("Streaming processing completed in {} ms", 
+        total_time.count());
+    
+    return median_results;
+}
+
+/**
  * \brief Запуск benchmark сравнения однопоточной и многопоточной версий
  * \param csv_files список файлов
  * \param output_dir директория для результатов
@@ -223,7 +260,7 @@ void run_benchmark(
     const fs::path& output_dir) {
     
     spdlog::info("========================================");
-    spdlog::info("  BENCHMARK: Single-thread vs Multi-thread");
+    spdlog::info("  BENCHMARK: All Modes Comparison");
     spdlog::info("========================================");
     spdlog::info("Files: {}", csv_files.size());
     spdlog::info("");
@@ -247,29 +284,45 @@ void run_benchmark(
         mt_end - mt_start);
     
     spdlog::info("");
+    
+    // Потоковый режим
+    spdlog::info("--- Running Streaming (v2.1) ---");
+    auto str_start = std::chrono::steady_clock::now();
+    auto str_results = process_streaming(csv_files, 10000);
+    auto str_end = std::chrono::steady_clock::now();
+    auto str_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        str_end - str_start);
+    
+    spdlog::info("");
     spdlog::info("========================================");
     spdlog::info("  BENCHMARK RESULTS");
     spdlog::info("========================================");
-    spdlog::info("Single-threaded: {} ms", st_time.count());
-    spdlog::info("Multi-threaded:  {} ms", mt_time.count());
+    spdlog::info("Single-threaded (v1.0): {} ms", st_time.count());
+    spdlog::info("Multi-threaded  (v2.0): {} ms", mt_time.count());
+    spdlog::info("Streaming       (v2.1): {} ms", str_time.count());
     
-    if (mt_time.count() > 0) {
-        double speedup = static_cast<double>(st_time.count()) / mt_time.count();
-        spdlog::info("Speedup:         {:.2f}x", speedup);
+    if (mt_time.count() > 0 && st_time.count() > 0) {
+        double speedup_mt = static_cast<double>(st_time.count()) / mt_time.count();
+        double speedup_str = static_cast<double>(st_time.count()) / str_time.count();
         
-        if (speedup > 1.0) {
-            spdlog::info("Multi-threaded is {:.1f}% FASTER", (speedup - 1.0) * 100);
+        spdlog::info("");
+        spdlog::info("Speedup vs Single-threaded:");
+        spdlog::info("  Multi-threaded:  {:.2f}x", speedup_mt);
+        spdlog::info("  Streaming:       {:.2f}x", speedup_str);
+        
+        if (speedup_mt > speedup_str) {
+            spdlog::info("Winner: Multi-threaded (best for files <RAM)");
         } else {
-            spdlog::info("Single-threaded is {:.1f}% faster", (1.0 / speedup - 1.0) * 100);
+            spdlog::info("Winner: Streaming (best for files >RAM)");
         }
     }
     spdlog::info("========================================");
     
-    // Сохраняем результаты многопоточной версии
+    // Сохранение результатов
     const auto output_file = output_dir / "median_result.csv";
-    if (!median_calculator::save_results(mt_results, output_file)) {
-    spdlog::error("Failed to save benchmark results");
-}
+    if (!median_calculator::save_results(str_results, output_file)) {
+        spdlog::error("Failed to save benchmark results");
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -280,15 +333,25 @@ int main(int argc, char* argv[]) {
     
     // Проверка аргументов для выбора режима
     bool single_thread_mode = false;
+    bool streaming_mode = false;
     bool benchmark_mode = false;
+    int batch_size = 10000;
     
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s" || arg == "--single-thread") {
             single_thread_mode = true;
         }
+        if (arg == "-m" || arg == "--streaming") {
+            streaming_mode = true;
+        }
         if (arg == "-b" || arg == "--benchmark") {
             benchmark_mode = true;
+        }
+        if (arg == "--batch-size" && i + 1 < argc) {
+            try {
+                batch_size = std::stoi(argv[i + 1]);
+            } catch (...) {}
         }
     }
 
@@ -364,6 +427,20 @@ int main(int argc, char* argv[]) {
         }
         
         // Сохранение результатов
+        const auto output_file = config.output_dir / "median_result.csv";
+        if (!median_calculator::save_results(median_results, output_file)) {
+            spdlog::error("Failed to save results");
+            return 1;
+        }
+        
+    } else if (streaming_mode) {
+        median_results = process_streaming(csv_files, batch_size);
+        
+        if (median_results.empty()) {
+            spdlog::error("Failed to calculate median");
+            return 1;
+        }
+        
         const auto output_file = config.output_dir / "median_result.csv";
         if (!median_calculator::save_results(median_results, output_file)) {
             spdlog::error("Failed to save results");
