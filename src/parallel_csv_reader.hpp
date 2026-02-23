@@ -2,8 +2,8 @@
  * \file parallel_csv_reader.hpp
  * \author github:PsiXich
  * \brief Параллельное чтение CSV файлов
- * \date 2025-02-22
- * \version 2.0
+ * \date 2025-02-23
+ * \version 2.1
  */
 
 #ifndef PARALLEL_CSV_READER_HPP
@@ -15,6 +15,7 @@
 #include <memory>
 #include <atomic>
 #include <chrono>
+#include <sstream>
 #include <spdlog/spdlog.h>
 #include "csv_reader.hpp"
 #include "csv_record.hpp"
@@ -130,8 +131,11 @@ private:
         auto start_time = std::chrono::steady_clock::now();
         
         try {
+            // Преобразуем thread::id в строку для логирования
+            std::ostringstream oss;
+            oss << std::this_thread::get_id();
             spdlog::debug("Thread {} reading file: {}", 
-                std::this_thread::get_id(), 
+                oss.str(), 
                 file_path_.filename().string());
             
             // Читаем файл (используем существующий csv_reader)
@@ -156,8 +160,11 @@ private:
             stats_.time = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_time - start_time);
             
+            // Преобразуем thread::id в строку для логирования
+            std::ostringstream oss2;
+            oss2 << std::this_thread::get_id();
             spdlog::debug("Thread {} finished reading {} records in {} ms", 
-                std::this_thread::get_id(),
+                oss2.str(),
                 stats_.records_read,
                 stats_.time.count());
             
