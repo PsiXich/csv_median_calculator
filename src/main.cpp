@@ -3,7 +3,7 @@
  * \author github:PsiXich
  * \brief Точка входа приложения для расчета медианы цен из CSV-файлов
  * \date 2025-02-23
- * \version 2.0
+ * \version 2.1
  */
 
 #include <iostream>
@@ -24,6 +24,8 @@
 #include "thread_safe_queue.hpp"
 #include "parallel_csv_reader.hpp"
 #include "data_processor.hpp"
+#include "streaming_csv_reader.hpp"
+#include "streaming_parallel_reader.hpp"
 
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
@@ -44,7 +46,10 @@ namespace fs = std::filesystem;
             ("cfg", po::value<std::string>(), 
                 "Path to configuration file (short form)")
             ("single-thread,s", "Use single-threaded mode (v1.0)")
-            ("benchmark,b", "Run benchmark (compare single vs multi)");
+            ("streaming,m", "Use memory-efficient streaming mode (v2.1)")
+            ("batch-size", po::value<int>()->default_value(10000),
+                "Batch size for streaming mode (default: 10000)")
+            ("benchmark,b", "Run benchmark (compare all modes)");
         
         po::variables_map vm;
         po::store(po::parse_command_line(argc_, argv_, desc), vm);
@@ -56,7 +61,11 @@ namespace fs = std::filesystem;
             std::cout << "\nExamples:\n";
             std::cout << "  Multi-threaded:  ./csv_median_calculator -config config.toml\n";
             std::cout << "  Single-threaded: ./csv_median_calculator -s\n";
+            std::cout << "  Streaming mode:  ./csv_median_calculator -m\n";
             std::cout << "  Benchmark:       ./csv_median_calculator -b\n";
+            std::cout << "\nStreaming mode (v2.1):\n";
+            std::cout << "  Best for files >RAM (e.g., 10GB file with 8GB RAM)\n";
+            std::cout << "  Processes data in batches without loading entire file\n";
             return "";
         }
         
