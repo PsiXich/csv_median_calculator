@@ -17,6 +17,7 @@
 #include <optional>
 #include <spdlog/spdlog.h>
 #include "csv_record.hpp"
+#include "csv_reader_helper.hpp"
 
 namespace fs = std::filesystem;
 
@@ -33,41 +34,7 @@ public:
     [[nodiscard]] static std::vector<csv_record> read_file(
         const fs::path& file_path_) noexcept;
 
-private:
-    /**
-     * \brief Парсинг строки CSV в вектор полей
-     * \param line_ строка CSV
-     * \param delimiter_ разделитель (по умолчанию ';')
-     * \return вектор полей
-     */
-    [[nodiscard]] static std::vector<std::string> split_line(
-        const std::string& line_,
-        char delimiter_ = ';') noexcept;
-    
-    /**
-     * \brief Определение типа CSV файла по заголовку
-     * \param header_fields_ поля заголовка
-     * \return true если level.csv, false если trade.csv
-     */
-    [[nodiscard]] static bool is_level_file(
-        const std::vector<std::string>& header_fields_) noexcept;
-    
-    /**
-     * \brief Парсинг строки в level_record
-     * \param fields_ поля строки
-     * \return опциональная запись (nullopt при ошибке)
-     */
-    [[nodiscard]] static std::optional<level_record> parse_level_record(
-        const std::vector<std::string>& fields_) noexcept;
-    
-    /**
-     * \brief Парсинг строки в trade_record
-     * \param fields_ поля строки
-     * \return опциональная запись (nullopt при ошибке)
-     */
-    [[nodiscard]] static std::optional<trade_record> parse_trade_record(
-        const std::vector<std::string>& fields_) noexcept;
-    
+private:   
     /**
      * \brief Безопасный парсинг uint64_t
      * \param str_ строка для парсинга
@@ -127,7 +94,7 @@ std::vector<csv_record> csv_reader::read_file(
         }
         line_number++;
         
-        auto header_fields = split_line(line);
+        auto header_fields = csv_helpers::split_line(line);
         if (header_fields.empty()) {
             spdlog::error("Incorrect header in file: {}", 
                 file_path_.string());
@@ -135,7 +102,7 @@ std::vector<csv_record> csv_reader::read_file(
         }
         
         // Определение типа файла
-        const bool is_level = is_level_file(header_fields);
+        const bool is_level = csv_helpers::is_level_file(header_fields);
         
         // Чтение данных
         while (std::getline(file, line)) {
@@ -146,10 +113,10 @@ std::vector<csv_record> csv_reader::read_file(
                 continue;
             }
             
-            auto fields = split_line(line);
+            auto fields = csv_helpers::split_line(line);
             
             if (is_level) {
-                auto record = parse_level_record(fields);
+                auto record = csv_helpers::parse_level_record(fields);
                 if (record) {
                     result.push_back(*record);
                 } else {
@@ -157,7 +124,7 @@ std::vector<csv_record> csv_reader::read_file(
                         line_number, file_path_.filename().string());
                 }
             } else {
-                auto record = parse_trade_record(fields);
+                auto record = csv_helpers::parse_trade_record(fields);
                 if (record) {
                     result.push_back(*record);
                 } else {
@@ -176,99 +143,6 @@ std::vector<csv_record> csv_reader::read_file(
     }
     
     return result;
-}
-
-std::vector<std::string> csv_reader::split_line(
-    const std::string& line_,
-    char delimiter_) noexcept {
-    
-    std::vector<std::string> result;
-    std::stringstream ss(line_);
-    std::string field;
-    
-    while (std::getline(ss, field, delimiter_)) {
-        result.push_back(trim(field));
-    }
-    
-    return result;
-}
-
-bool csv_reader::is_level_file(
-    const std::vector<std::string>& header_fields_) noexcept {
-    
-    // level.csv содержит поле "rebuild"
-    for (const auto& field : header_fields_) {
-        if (field == "rebuild") {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::optional<level_record> csv_reader::parse_level_record(
-    const std::vector<std::string>& fields_) noexcept {
-    
-    // Ожидаем 6 полей: receive_ts|exchange_ts|price|quantity|side|rebuild
-    if (fields_.size() != 6) {
-        return std::nullopt;
-    }
-    
-    level_record record;
-    
-    auto receive_ts = parse_uint64(fields_[0]);
-    if (!receive_ts) return std::nullopt;
-    record.receive_ts = *receive_ts;
-    
-    auto exchange_ts = parse_uint64(fields_[1]);
-    if (!exchange_ts) return std::nullopt;
-    record.exchange_ts = *exchange_ts;
-    
-    auto price = parse_double(fields_[2]);
-    if (!price) return std::nullopt;
-    record.price = *price;
-    
-    auto quantity = parse_double(fields_[3]);
-    if (!quantity) return std::nullopt;
-    record.quantity = *quantity;
-    
-    record.side = fields_[4];
-    
-    auto rebuild = parse_int(fields_[5]);
-    if (!rebuild) return std::nullopt;
-    record.rebuild = *rebuild;
-    
-    return record;
-}
-
-std::optional<trade_record> csv_reader::parse_trade_record(
-    const std::vector<std::string>& fields_) noexcept {
-    
-    // Ожидаем 5 полей: receive_ts|exchange_ts|price|quantity|side
-    if (fields_.size() != 5) {
-        return std::nullopt;
-    }
-    
-    trade_record record;
-    
-    auto receive_ts = parse_uint64(fields_[0]);
-    if (!receive_ts) return std::nullopt;
-    record.receive_ts = *receive_ts;
-    
-    auto exchange_ts = parse_uint64(fields_[1]);
-    if (!exchange_ts) return std::nullopt;
-    record.exchange_ts = *exchange_ts;
-    
-    auto price = parse_double(fields_[2]);
-    if (!price) return std::nullopt;
-    record.price = *price;
-    
-    auto quantity = parse_double(fields_[3]);
-    if (!quantity) return std::nullopt;
-    record.quantity = *quantity;
-    
-    record.side = fields_[4];
-    
-    return record;
 }
 
 std::optional<std::uint64_t> csv_reader::parse_uint64(
