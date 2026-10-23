@@ -1,404 +1,115 @@
 # CSV Median Calculator
 
-**Версия:** 2.1.0  
-**Язык:** C++23  
-**Лицензия:** MIT
+Приложение на C++23 для расчёта последовательных оценок медианы цен из CSV-файлов рыночных данных. Поддерживает последовательное и параллельное чтение, чтение порциями, TOML-конфигурацию и сравнение режимов обработки.
 
-Высокопроизводительное приложение для инкрементального расчета медианы цен из CSV-файлов биржевых торгов с поддержкой многопоточной и потоковой обработки.
+## Возможности
 
----
+- Расчёт медианы с использованием P² из Boost.Accumulators.
+- Архитектура producer-consumer с потокобезопасной очередью.
+- Сортировка записей по времени перед расчётом.
+- Фильтрация входных файлов по имени.
+- Запись изменений медианы в CSV.
+- Генератор тестовых данных и встроенный benchmark.
 
-## 🚀 Быстрый старт
+P² даёт приближённую оценку медианы. Постоянный объём памяти самого оценщика не означает постоянный объём памяти всего приложения: текущий обработчик собирает записи в памяти для сортировки, в том числе в режиме `--streaming`. Этот режим меняет способ чтения файлов, но не гарантирует обработку наборов данных, превышающих доступную RAM.
 
-### Сборка
+## Сборка и быстрый старт
+
+Требуются CMake 3.23+, компилятор с поддержкой C++23 и доступ к сети при первоначальной загрузке зависимостей. CMake загружает Boost 1.84.0, toml++ 3.4.0 и spdlog 1.13.0.
+
+Выполняйте команды из корня репозитория:
 
 ```bash
-# Клонировать репозиторий
-git clone https://github.com/your-username/csv_median_calculator.git
+git clone https://github.com/PsiXich/csv_median_calculator.git
 cd csv_median_calculator
-
-# Создать директорию сборки
-mkdir build && cd build
-
-# Настроить и собрать
-cmake ..
-cmake --build . -j$(nproc)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+./build/generate_test_data 1000 500
+./build/csv_median_calculator --config config.toml
 ```
 
-### Запуск
+Для Windows добавьте расширение `.exe`. При использовании генератора с несколькими конфигурациями исполняемые файлы находятся в `build/Release/`.
 
-```bash
-# Сгенерировать тестовые данные
-./generate_test_data 1000 500
+Генератор создаёт входные CSV в `examples/input/`. При стандартной конфигурации результат записывается в `examples/output/median_result.csv`. Относительные пути в конфигурации отсчитываются от текущей рабочей директории.
 
-# Запустить приложение
-./csv_median_calculator --config ../config.toml
-```
+## Режимы работы
 
-**Результат:** файл `examples/output/median_result.csv` с рассчитанными медианами.
+| Режим | Команда из корня репозитория |
+| --- | --- |
+| Многопоточный, по умолчанию | `./build/csv_median_calculator --config config.toml` |
+| Однопоточный | `./build/csv_median_calculator --config config.toml -s` |
+| Чтение порциями | `./build/csv_median_calculator --config config.toml -m --batch-size 10000` |
+| Сравнение режимов | `./build/csv_median_calculator --config config.toml -b` |
+| Справка | `./build/csv_median_calculator --help` |
 
----
+Производительность зависит от объёма данных, диска, числа потоков и доступной памяти. Для сравнения режимов на своей системе используйте benchmark.
 
-## 📋 Требования
-
-### Компилятор и инструменты
-
-- **CMake** 3.23+
-- **C++23 компилятор:**
-  - GCC 13+ (Linux)
-  - Clang 16+ (macOS)  
-  - MSVC 19.35+ или MinGW-w64 (Windows)
-
-### Зависимости
-
-Скачиваются автоматически через CMake FetchContent:
-
-- **Boost 1.84.0** — Program_options, Accumulators
-- **toml++ 3.4.0** — парсинг конфигурации
-- **spdlog 1.13.0** — логирование
-
----
-
-## 🔨 Установка
-
-<details>
-<summary><b>Windows (MinGW/MSYS2)</b></summary>
-
-```bash
-# Открыть MSYS2 MinGW64 терминал
-cd csv_median_calculator
-
-mkdir build && cd build
-cmake .. -DENABLE_STRICT_WARNINGS=OFF
-cmake --build . -j$(nproc)
-```
-</details>
-
-<details>
-<summary><b>Linux (Ubuntu/Debian)</b></summary>
-
-```bash
-# Установить зависимости
-sudo apt-get update
-sudo apt-get install build-essential cmake git
-
-# Собрать
-mkdir build && cd build
-cmake ..
-cmake --build . -j$(nproc)
-```
-</details>
-
-<details>
-<summary><b>macOS</b></summary>
-
-```bash
-# Установить инструменты
-xcode-select --install
-brew install cmake
-
-# Собрать
-mkdir build && cd build
-cmake ..
-cmake --build . -j$(sysctl -n hw.ncpu)
-```
-</details>
-
-### Проверка установки
-
-```bash
-cd build
-./csv_median_calculator --help
-```
-
----
-
-## 📖 Использование
-
-### Режимы работы
-
-Приложение поддерживает **3 режима обработки**:
-
-| Режим | Команда | Применение |
-|-------|---------|------------|
-| **Multi-threaded** | `./csv_median_calculator` | По умолчанию, файлы <RAM |
-| **Single-threaded** | `./csv_median_calculator -s` | Отладка, базовая обработка |
-| **Streaming** | `./csv_median_calculator -m` | Файлы >RAM, экономия памяти |
-| **Benchmark** | `./csv_median_calculator -b` | Сравнение всех режимов |
-
-### Примеры использования
-
-```bash
-# Многопоточный режим (v2.0) - по умолчанию
-./csv_median_calculator -config config.toml
-
-# Однопоточный режим (v1.0)
-./csv_median_calculator -s
-
-# Потоковый режим (v2.1) - для больших файлов
-./csv_median_calculator -m --batch-size 10000
-
-# Benchmark - сравнение производительности
-./csv_median_calculator -b
-
-# Справка
-./csv_median_calculator --help
-```
-
-### Генерация тестовых данных
-
-```bash
-# Маленький датасет (1.5k записей)
-./generate_test_data 1000 500
-
-# Средний датасет (150k записей)
-./generate_test_data 100000 50000
-
-# Большой датасет (1.5M записей)
-./generate_test_data 1000000 500000
-```
-
-Параметры: `<level_records> <trade_records>`
-
-Файлы создаются в `examples/input/`.
-
----
-
-## ✨ Функциональность
-
-### Основные возможности
-
-- ✅ **Инкрементальный расчет медианы** — P² алгоритм (Boost.Accumulators)
-- ✅ **Многопоточная обработка** — параллельное чтение файлов
-- ✅ **Потоковая обработка** — файлы больше RAM
-- ✅ **Автоматическая оптимизация** — запись только изменений медианы
-- ✅ **Фильтрация файлов** — по маскам имен
-- ✅ **Встроенный benchmark** — сравнение режимов
-
-### Производительность
-
-**Тестовый датасет:** 1500 записей, 2 файла
-
-| Режим | Время | Speedup | Memory |
-|-------|-------|---------|--------|
-| Single-threaded (v1.0) | 156 ms | 1.0x | 2 MB |
-| Multi-threaded (v2.0) | 134 ms | **1.16x** | 3 MB |
-| Streaming (v2.1) | 145 ms | 1.08x | **<1 MB** |
-
-**Большие файлы (100k+ записей):**
-- Multi-threaded: **1.5-2.5x** ускорение
-- Streaming: работает на файлах **любого размера**
-
-### Версии
-
-#### v1.0 — Базовая функциональность
-- Последовательная обработка CSV файлов
-- Инкрементальный расчет медианы
-- TOML конфигурация
-
-#### v2.0 — Многопоточность
-- Параллельное чтение файлов
-- Потокобезопасная очередь
-- Ускорение 1.2-2.5x на многоядерных CPU
-
-#### v2.1 — Потоковая обработка
-- Батч-обработка (configurable batch size)
-- Обработка файлов >RAM
-- Memory-efficient режим
-
----
-
-## ⚙️ Конфигурация
-
-### Файл config.toml
+## Конфигурация
 
 ```toml
 [main]
-    # Директория с входными CSV файлами (обязательно)
-    input = './examples/input'
-    
-    # Директория для результатов (опционально, default: ./output)
-    output = './examples/output'
-    
-    # Маски для фильтрации файлов (опционально, пусто = все файлы)
-    filename_mask = ['level', 'trade']
+input = './examples/input'
+output = './examples/output'
+filename_mask = ['level', 'trade']
 ```
 
-### Параметры
+- `input`: директория с входными CSV.
+- `output`: директория результатов.
+- `filename_mask`: фильтры имён входных файлов.
 
-| Параметр | Тип | Обязательный | Описание |
-|----------|-----|--------------|----------|
-| `input` | string | Да | Путь к входным CSV |
-| `output` | string | Нет | Путь для результатов |
-| `filename_mask` | array | Нет | Фильтр файлов |
+## Формат данных
 
----
+Входные файлы используют разделитель `;`.
 
-## 📊 Формат данных
+Данные стакана (`level`):
 
-### Входные CSV файлы
-
-**level.csv** — состояние стакана заявок
 ```csv
 receive_ts;exchange_ts;price;quantity;side;rebuild
 1716810808593627;1716810808574000;68480.00;10.109;bid;1
 ```
 
-**trade.csv** — совершенные сделки
+Сделки (`trade`):
+
 ```csv
 receive_ts;exchange_ts;price;quantity;side
 1716810808663260;1716810808661000;68480.10;0.011;bid
 ```
 
-### Выходной файл
+Результат:
 
-**median_result.csv** — медианы цен
 ```csv
 receive_ts;price_median
 1716810808663260;68480.10000000
-1716810809314641;68480.05000000
 ```
 
-**Важно:** записываются только **изменения медианы**.
+В выходной файл записываются только изменения рассчитанной медианы.
 
----
+## Архитектура
 
-## 🏗️ Архитектура
+Чтение CSV → потокобезопасная очередь → сбор и сортировка записей → расчёт медианы → CSV.
 
-### Структура проекта
+| Файл | Назначение |
+| --- | --- |
+| `src/main.cpp` | CLI, выбор режима и выполнение обработки |
+| `src/config_parser.hpp` | TOML-конфигурация |
+| `src/csv_reader.hpp` | Последовательное чтение |
+| `src/parallel_csv_reader.hpp` | Параллельное чтение |
+| `src/streaming_parallel_reader.hpp` | Чтение порциями |
+| `src/thread_safe_queue.hpp` | Передача записей между потоками |
+| `src/data_processor.hpp` | Сбор и сортировка данных |
+| `src/median_calculator.hpp` | Расчёт медианы и сохранение результата |
+| `src/generate_test_data.cpp` | Генератор входных данных |
 
-```
-csv_median_calculator/
-├── CMakeLists.txt              # Конфигурация сборки
-├── README.md                   # Документация
-├── config.toml                 # Конфигурация
-│
-├── src/                        # Исходный код (header-only)
-│   ├── main.cpp                # Точка входа
-│   ├── config_parser.hpp       # Парсинг TOML
-│   ├── csv_reader.hpp          # Базовый CSV reader
-│   ├── csv_record.hpp          # Структуры данных
-│   ├── median_calculator.hpp   # P² алгоритм медианы
-│   │
-│   ├── thread_safe_queue.hpp   # v2.0: Потокобезопасная очередь
-│   ├── parallel_csv_reader.hpp # v2.0: Параллельное чтение
-│   ├── data_processor.hpp      # v2.0: Consumer
-│   │
-│   ├── streaming_csv_reader.hpp      # v2.1: Streaming reader
-│   ├── streaming_parallel_reader.hpp # v2.1: Stream + Parallel
-│
-├── examples/
-│   ├── input/                  # Входные CSV
-│   └── output/                 # Результаты
-│
-└── build/                      # Артефакты сборки
-```
+## Статус проекта
 
-### Многопоточная архитектура (v2.0)
+Проект создан в рамках тестового задания для позиции C++ разработчика. Публичные релизы и Git-теги пока не опубликованы. В CMake и стартовом сообщении программы указана версия `1.0.0`; прежние обозначения режимов `v2.0` и `v2.1` не являются опубликованными релизами.
 
-```
-Reader Thread #1 ──┐
-Reader Thread #2 ──┼──→ Thread-Safe Queue ──→ Processor ──→ Results
-Reader Thread #N ──┘
-```
+Возможные направления развития: модульные тесты, ограничение памяти всего конвейера и внешняя сортировка для больших наборов данных.
 
-**Producer-Consumer pattern:**
-- **Producers:** читают файлы параллельно
-- **Queue:** потокобезопасная передача данных
-- **Consumer:** сортировка и расчет медианы
+## Зависимости
 
-### Потоковая обработка (v2.1)
-
-```
-File 1GB:
-├── Batch 1 (10k records) → Process → Free memory
-├── Batch 2 (10k records) → Process → Free memory
-├── Batch 3 (10k records) → Process → Free memory
-└── ...
-
-Peak Memory: ~размер 1 батча × кол-во файлов
-```
-
----
-
-## 💻 Технологии
-
-### C++23
-
-- `std::filesystem` — кроссплатформенная работа с файлами
-- `std::optional` — безопасная обработка отсутствующих значений
-- `std::variant` — type-safe хранение разных типов
-- `std::thread`, `std::mutex`, `std::condition_variable` — многопоточность
-- `std::atomic` — lock-free счетчики
-
-### Библиотеки
-
-**Boost.Accumulators** — P² алгоритм медианы
-- O(1) память
-- O(1) время на добавление значения
-- Не требует хранения всех данных
-
-**Boost.Program_options** — парсинг CLI аргументов
-
-**toml++** — header-only TOML парсер
-
-**spdlog** — высокопроизводительное логирование
-
-### Паттерны
-
-- **Producer-Consumer** — многопоточная обработка
-- **Streaming** — батч-обработка больших файлов
-- **Header-only** — упрощенная интеграция
-- **RAII** — автоматическое управление ресурсами
-
----
-
-## 🔧 Разработка
-
-### Git Workflow
-
-- `main` — стабильные релизы
-- `dev` — активная разработка
-
-### Code Style
-
-**snake_case** для всех идентификаторов:
-
-```cpp
-class csv_reader;                  // классы
-void calculate_median();           // функции
-int _member_variable;              // члены класса (префикс _)
-void process_data(int value_);    // параметры (суффикс _)
-```
-
----
-
-## 📈 Планы развития
-
-### v2.2 (в разработке)
-- Пул потоков (thread pool)
-- Параллельная сортировка
-- Unit тесты (Google Test)
-
-### v3.0 (идеи)
-- REST API
-- Дополнительные метрики (среднее, квантили)
-- Docker контейнер
-- Real-time обработка
-
----
-
-## 🙏 Благодарности
-
-Проект создан в рамках тестового задания для позиции C++ разработчика.
-
-**Используемые библиотеки:**
 - [Boost](https://www.boost.org/)
 - [toml++](https://github.com/marzer/tomlplusplus)
 - [spdlog](https://github.com/gabime/spdlog)
 
----
-
-**Автор:** PsiXich  
-**Версия:** 2.1
-**Обновлено:** 23 февраля 2025
+Отдельный файл лицензии в репозитории пока отсутствует.
